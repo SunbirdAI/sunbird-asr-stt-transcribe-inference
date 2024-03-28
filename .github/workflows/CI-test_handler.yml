@@ -37,7 +37,7 @@ jobs:
 
   run_tests:
     needs: launch_runner_worker
-    runs-on: runpod
+    runs-on: ubuntu-latest  # runpod
 
     steps:
       - uses: actions/checkout@v3
