@@ -10,8 +10,8 @@ on:
     inputs:
       image_tag:
         description: "Docker Image Tag"
-        required: true
-        default: "dev"
+        required: false
+        default: "v2"
 
 jobs:
   docker-build:

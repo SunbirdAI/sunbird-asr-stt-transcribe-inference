@@ -32,7 +32,7 @@ jobs:
         id: docker-tag
         run: |
           if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
-            echo "DOCKER_TAG=dev" >> $GITHUB_ENV
+            echo "DOCKER_TAG=v2" >> $GITHUB_ENV
           else
             echo "DOCKER_TAG=${{ github.sha }}" >> $GITHUB_ENV
           fi
