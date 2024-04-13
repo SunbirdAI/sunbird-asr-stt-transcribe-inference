@@ -1,5 +1,0 @@
-#!/usr/bin/env bash
-
-set -e
-
-docker push sunbirddocker/asr-stt-transcribe-inference:v2

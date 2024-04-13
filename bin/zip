@@ -1,3 +1,0 @@
-zip -r sunbird-asr-stt-transcribe-inference sunbird-asr-stt-transcribe-inference/*
-
-gcloud compute scp LOCAL_FILE_PATH VM_NAME:REMOTE_DIR
