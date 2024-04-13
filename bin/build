@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+
+set -e
+
+docker build --platform linux/amd64 --tag sunbirddocker/asr-stt-transcribe-inference:v2 .

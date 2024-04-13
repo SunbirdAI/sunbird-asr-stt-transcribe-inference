@@ -1,0 +1,8 @@
+{
+    "input": {
+        "name": "PatrickCmd",
+        "target_lang": "lug",
+        "adapter": "lug",
+        "audio_file": "content/SIMBA 10.1.mp3"
+    }
+}
