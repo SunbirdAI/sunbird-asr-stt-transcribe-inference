@@ -22,8 +22,9 @@ apt-get install build-essential cmake libboost-system-dev libboost-thread-dev \
 curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
 python3 get-pip.py
 
+# Install gcloud
+# RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list && curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg && apt-get update -y && apt-get install google-cloud-sdk -y
+    
+
 # Clean up, remove unnecessary packages and help reduce image size
 apt-get autoremove -y && apt-get clean -y && rm -rf /var/lib/apt/lists/*
-
-gcloud compute scp /Users/patrickcmd/Projects/sunbirdai/sunbird-asr-stt-transcribe-inference.zip sb-asr-stt-inference-instance:~ --zone "us-west1-b" --project "sb-gcp-project-01"
-gcloud compute ssh --zone "us-west1-b" "sb-asr-stt-inference-instance" --project "sb-gcp-project-01"

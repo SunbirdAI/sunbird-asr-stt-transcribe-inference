@@ -1,3 +1,6 @@
 zip -r sunbird-asr-stt-transcribe-inference sunbird-asr-stt-transcribe-inference/*
 
 gcloud compute scp LOCAL_FILE_PATH VM_NAME:REMOTE_DIR
+
+gcloud compute scp /Users/patrickcmd/Projects/sunbirdai/sunbird-asr-stt-transcribe-inference.zip sb-asr-stt-inference-instance:~ --zone "us-west1-b" --project "sb-gcp-project-01"
+gcloud compute ssh --zone "us-west1-b" "sb-asr-stt-inference-instance" --project "sb-gcp-project-01"

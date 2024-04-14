@@ -161,3 +161,6 @@ cython_debug/
 
 # jobs
 jobs/
+
+# GCP Credentials
+credentials.json

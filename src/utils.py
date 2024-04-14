@@ -1,5 +1,7 @@
 import os
 from multiprocessing import Pool
+import base64
+import json
 
 import librosa
 import torch
@@ -37,9 +39,26 @@ class KenLM:
         return text
 
 
+def decode_gcp_credentials():
+    encoded_credentials = os.getenv("GCP_CREDENTIALS")
+    decoded_bytes = base64.b64decode(encoded_credentials)
+    decoded_string = decoded_bytes.decode('utf-8')
+    decoded_json = json.loads(decoded_string)
+
+    decoded_cred_json_file_path = "credentials.json"
+    with open(decoded_cred_json_file_path, "w") as f:
+        json.dump(decoded_json, f, indent=4)
+    
+    return decoded_cred_json_file_path
+
+
 def download_audio_file(bucket_name, blob_name, folder_path):
     try:
-        storage_client = storage.Client()
+        if os.path.exists("./credentials.json"):
+            credentials_json = "./credentials.json"
+        else:
+            credentials_json = decode_gcp_credentials()
+        storage_client = storage.Client.from_service_account_json(credentials_json)
         bucket = storage_client.bucket(bucket_name)
         blob = bucket.blob(blob_name)
 
