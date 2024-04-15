@@ -2,4 +2,4 @@
 
 set -e
 
-docker push sunbirddocker/asr-stt-transcribe-inference:v2
+docker push sunbirddocker/asr-stt-transcribe-inference:v2.2
