@@ -7,9 +7,16 @@ import time
 import runpod
 from dotenv import load_dotenv
 from huggingface_hub import hf_hub_download
+from transformers import pipeline
 
 from config import sb_lm_config  # noqa F401
-from utils import KenLM, get_audio_file, load_model_and_processor, transcribe
+from utils import (
+    device,
+    get_audio_file,
+    load_kenlm_model,
+    transcribe_with_kenlm,
+    transcribe_without_kenlm,
+)
 
 load_dotenv()
 
@@ -26,10 +33,23 @@ def main(target_lang, adapter, audio_file):
     target_lang = target_lang
     adapter = adapter
     audio_file = audio_file
-    ngram_type = "eng_5gram"  # Specify the desired ngram type (e.g., "5gram", "3gram", "mixed_5gram", "mixed_3gram")
-
+    ngram_type = "eng_3gram"  # Specify the desired ngram type (e.g., "5gram", "3gram", "mixed_5gram", "mixed_3gram")
+    chunk_length_s = 5  # Specify the desired chunk length in seconds
+    stride_length_s = (
+        1,
+        2,
+    )  # Specify the desired stride length in seconds (left, right)
+    return_timestamps = (
+        "word"  # Specify the desired timestamp format ("word" or "char")
+    )
     lm_file_name = f"{target_lang}_{ngram_type}.bin"
     lm_file_subfolder = "language_model"
+
+    asr_pipeline = pipeline(
+        "automatic-speech-recognition", model=model_id, revision="main", device=device
+    )
+    asr_pipeline.tokenizer.set_target_lang(target_lang)
+    asr_pipeline.model.load_adapter(adapter)
 
     try:
         lm_file = hf_hub_download(
@@ -37,17 +57,26 @@ def main(target_lang, adapter, audio_file):
             filename=lm_file_name,
             subfolder=lm_file_subfolder,
         )
+        kenlm_decoder = load_kenlm_model(lm_file, asr_pipeline.tokenizer)
+        transcription_with_lm = transcribe_with_kenlm(
+            audio_file,
+            asr_pipeline,
+            kenlm_decoder=kenlm_decoder,
+            chunk_length_s=chunk_length_s,
+            stride_length_s=stride_length_s,
+            return_timestamps=return_timestamps,
+        )
+        return transcription_with_lm
     except Exception as e:
         print(f"Error downloading language model file: {e}")
-        return
-
-    model, processor = load_model_and_processor(model_id, target_lang, adapter)
-    kenlm = KenLM(processor.tokenizer, lm_file)
-
-    transcription_with_lm = transcribe(audio_file, model, processor, kenlm)
-    # transcription_without_lm = transcribe(audio_file, model, processor)
-
-    return transcription_with_lm  # transcription_without_lm
+        transcription_without_lm = transcribe_without_kenlm(
+            audio_file,
+            asr_pipeline,
+            chunk_length_s=chunk_length_s,
+            stride_length_s=stride_length_s,
+            return_timestamps=return_timestamps,
+        )
+        return transcription_without_lm
 
 
 def handler(job):
@@ -61,8 +90,8 @@ def handler(job):
 
         start_time = time.time()
 
-        transcription_with_lm = main(target_lang, adapter, audio_file)
-        response = {"audio_transcription": transcription_with_lm[0]}
+        transcription = main(target_lang, adapter, audio_file)
+        response = {"audio_transcription": transcription.get("text")}
         end_time = time.time()
         execution_time = end_time - start_time
         print(

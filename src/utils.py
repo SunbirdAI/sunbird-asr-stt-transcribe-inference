@@ -1,15 +1,13 @@
-import os
-from multiprocessing import Pool
 import base64
 import json
+import os
+from multiprocessing import Pool
 
 import librosa
 import torch
-import transformers
 from dotenv import load_dotenv
 from google.cloud import storage
 from pyctcdecode import build_ctcdecoder
-from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
 
 load_dotenv()
 
@@ -42,13 +40,13 @@ class KenLM:
 def decode_gcp_credentials():
     encoded_credentials = os.getenv("GCP_CREDENTIALS")
     decoded_bytes = base64.b64decode(encoded_credentials)
-    decoded_string = decoded_bytes.decode('utf-8')
+    decoded_string = decoded_bytes.decode("utf-8")
     decoded_json = json.loads(decoded_string)
 
     decoded_cred_json_file_path = "credentials.json"
     with open(decoded_cred_json_file_path, "w") as f:
         json.dump(decoded_json, f, indent=4)
-    
+
     return decoded_cred_json_file_path
 
 
@@ -86,37 +84,47 @@ def get_audio_file(audio_file):
     return audio_file
 
 
-def load_model_and_processor(model_id, target_lang, adapter):
-    model = Wav2Vec2ForCTC.from_pretrained(model_id)
-    processor = Wav2Vec2Processor.from_pretrained(model_id)
-
-    # Try getting the original vocab directly from the MMS repo
-    tokenizer = transformers.Wav2Vec2CTCTokenizer.from_pretrained("facebook/mms-1b-all")
-    tokenizer.set_target_lang(target_lang)
-    processor.tokenizer = tokenizer
-
-    processor.tokenizer.set_target_lang(target_lang)
-    model.load_adapter(adapter)
-    model = model.to(device)
-    return model, processor
+def load_kenlm_model(lm_file, tokenizer):
+    kenlm_model = KenLM(tokenizer, lm_file)
+    print("Loaded KenLM model from:", lm_file)
+    return kenlm_model
 
 
-def transcribe(audio_file, model, processor, kenlm=None):
+def transcribe_with_kenlm(
+    audio_file,
+    asr_pipeline,
+    kenlm_decoder,
+    chunk_length_s=None,
+    stride_length_s=None,
+    return_timestamps=None,
+):
     audio_samples = librosa.load(audio_file, sr=16000, mono=True)[0]
-    inputs = processor(
-        audio_samples, sampling_rate=16_000, return_tensors="pt", padding=True
+
+    print("kenlm decoder type", asr_pipeline.type)
+
+    return asr_pipeline(
+        audio_samples,
+        chunk_length_s=chunk_length_s,
+        stride_length_s=stride_length_s,
+        return_timestamps=return_timestamps,
     )
-    with torch.no_grad():
-        logits = model(
-            inputs.input_values.to(device),
-            attention_mask=inputs.attention_mask.to(device),
-        ).logits
 
-    if kenlm:
-        transcription = kenlm.decode(logits)
-    else:
-        ids = torch.argmax(logits, dim=-1)[0]
-        transcription = processor.decode(ids)
-        transcription = transcription.replace("<pad>", "")
 
-    return transcription
+def transcribe_without_kenlm(
+    audio_file,
+    asr_pipeline,
+    chunk_length_s=None,
+    stride_length_s=None,
+    return_timestamps=None,
+):
+    audio_samples = librosa.load(audio_file, sr=16000, mono=True)[0]
+
+    # print(asr_pipeline.type)
+    print("no lmhead decoder type", asr_pipeline.type)
+
+    return asr_pipeline(
+        audio_samples,
+        chunk_length_s=chunk_length_s,
+        stride_length_s=stride_length_s,
+        return_timestamps=return_timestamps,
+    )

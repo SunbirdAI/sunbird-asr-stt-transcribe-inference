@@ -3,6 +3,6 @@
         "name": "PatrickCmd",
         "target_lang": "lug",
         "adapter": "lug",
-        "audio_file": "SIMBA_10.1.mp3"
+        "audio_file": "./content/SIMBA 10.1.mp3"
     }
 }
