@@ -2,4 +2,4 @@
 
 set -e
 
-docker build --platform linux/amd64 --tag sunbirddocker/asr-stt-transcribe-inference:v3.1 .
+docker build --platform linux/amd64 --tag sunbirddocker/asr-stt-transcribe-inference:v4 .

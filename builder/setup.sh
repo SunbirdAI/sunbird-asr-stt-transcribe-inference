@@ -16,7 +16,7 @@ apt-get update && apt-get install -y --no-install-recommends python3.11 python3.
 update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1
 apt-get install build-essential cmake libboost-system-dev libboost-thread-dev \
         libboost-program-options-dev libboost-test-dev libeigen3-dev zlib1g-dev libbz2-dev \
-        liblzma-dev -y
+        liblzma-dev ffmpeg -y
 
 # Install pip for Python 3.11
 curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
