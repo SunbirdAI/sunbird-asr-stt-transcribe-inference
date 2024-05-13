@@ -1,40 +1,120 @@
 import base64
 import json
 import os
-from multiprocessing import Pool
 
-import librosa
 import torch
 from dotenv import load_dotenv
 from google.cloud import storage
+from huggingface_hub import hf_hub_download
 from pyctcdecode import build_ctcdecoder
+from transformers import (
+    AutomaticSpeechRecognitionPipeline,
+    Wav2Vec2CTCTokenizer,
+    Wav2Vec2FeatureExtractor,
+    Wav2Vec2ForCTC,
+    Wav2Vec2Processor,
+    Wav2Vec2ProcessorWithLM,
+)
 
 load_dotenv()
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+lang_config = {"ach": "Sunbird/sunbird-mms", "lug": "Sunbird/sunbird-mms"}
 
 
-class KenLM:
-    def __init__(self, tokenizer, model_name, num_workers=8, beam_width=128):
-        self.num_workers = num_workers
-        self.beam_width = beam_width
-        vocab_dict = tokenizer.get_vocab()
-        self.vocabulary = [
-            x[0] for x in sorted(vocab_dict.items(), key=lambda x: x[1], reverse=False)
-        ]
+def setup_model(model_id: str, language: str):
+    """
+    Load Wav2Vec2 model for the specified language.
 
-        self.decoder = build_ctcdecoder(self.vocabulary, model_name)
+    Args:
+        model_id (str): Identifier for the Wav2Vec2 model.
+        language (str): Language code.
 
-    @staticmethod
-    def lm_postprocess(text):
-        return " ".join([x if len(x) > 1 else "" for x in text.split()]).strip()
+    Returns:
+        model: Loaded Wav2Vec2 model.
+        tokenizer: Model tokenizer.
+        processor: Processor for the model.
+        feature_extractor: Feature extractor for the model.
+    """
+    model = Wav2Vec2ForCTC.from_pretrained(model_id).to(device)
+    tokenizer = Wav2Vec2CTCTokenizer.from_pretrained(model_id)
+    tokenizer.set_target_lang(language)
+    model.load_adapter(f"{language}+eng")
+    feature_extractor = Wav2Vec2FeatureExtractor(
+        feature_size=1,
+        sampling_rate=16000,
+        padding_value=0.0,
+        do_normalize=True,
+        return_attention_mask=True,
+    )
+    processor = Wav2Vec2Processor(
+        feature_extractor=feature_extractor, tokenizer=tokenizer
+    )
+    return model, tokenizer, processor, feature_extractor
 
-    def decode(self, logits):
-        probs = logits.cpu().numpy()
-        with Pool(self.num_workers) as pool:
-            text = self.decoder.decode_batch(pool, probs)
-        text = [KenLM.lm_postprocess(x) for x in text]
-        return text
+
+def setup_decoder(language: str, tokenizer, feature_extractor):
+    """
+    Setup CTC decoder with language model.
+
+    Args:
+        language (str): Language code.
+        tokenizer: Model tokenizer.
+        feature_extractor: Feature extractor for the model.
+
+    Returns:
+        decoder: CTC decoder.
+    """
+    lm_file_name = f"{language}_3gram.bin"
+    lm_file_subfolder = "language_model"
+    lm_file = hf_hub_download(
+        repo_id=lang_config[language],
+        filename=lm_file_name,
+        subfolder=lm_file_subfolder,
+    )
+    processor = Wav2Vec2Processor(
+        feature_extractor=feature_extractor, tokenizer=tokenizer
+    )
+    vocab_dict = processor.tokenizer.get_vocab()
+    sorted_vocab_dict = {
+        k.lower(): v for k, v in sorted(vocab_dict.items(), key=lambda item: item[1])
+    }
+    decoder = build_ctcdecoder(
+        labels=list(sorted_vocab_dict.keys()), kenlm_model_path=lm_file
+    )
+    return decoder
+
+
+def setup_pipeline(model, tokenizer, feature_extractor, processor, decoder):
+    """
+    Setup ASR pipeline.
+
+    Args:
+        model: Loaded Wav2Vec2 model.
+        tokenizer: Model tokenizer.
+        feature_extractor: Feature extractor for the model.
+        processor: Processor for the model.
+        decoder: CTC decoder.
+
+    Returns:
+        pipe: ASR pipeline.
+    """
+    processor_with_lm = Wav2Vec2ProcessorWithLM(
+        feature_extractor=feature_extractor,
+        tokenizer=tokenizer,
+        decoder=decoder,
+    )
+    feature_extractor._set_processor_class("Wav2Vec2ProcessorWithLM")
+    pipe = AutomaticSpeechRecognitionPipeline(
+        model=model,
+        tokenizer=processor_with_lm.tokenizer,
+        feature_extractor=processor_with_lm.feature_extractor,
+        decoder=processor_with_lm.decoder,
+        device=device,
+        chunk_length_s=5,
+        stride_length_s=(1, 2),
+    )
+    return pipe
 
 
 def decode_gcp_credentials():
@@ -84,47 +164,35 @@ def get_audio_file(audio_file):
     return audio_file
 
 
-def load_kenlm_model(lm_file, tokenizer):
-    kenlm_model = KenLM(tokenizer, lm_file)
-    print("Loaded KenLM model from:", lm_file)
-    return kenlm_model
+def transcribe_audio(pipe, audio_file: str):
+    """
+    Transcribe audio file using the given pipeline.
+
+    Args:
+        pipe: ASR pipeline.
+        audio_file (str): Path to the audio file.
+
+    Returns:
+        str: Transcription of the audio file.
+    """
+    return pipe(audio_file)
 
 
-def transcribe_with_kenlm(
-    audio_file,
-    asr_pipeline,
-    kenlm_decoder,
-    chunk_length_s=None,
-    stride_length_s=None,
-    return_timestamps=None,
-):
-    audio_samples = librosa.load(audio_file, sr=16000, mono=True)[0]
+if __name__ == "__main__":
+    model_id = "Sunbird/sunbird-mms"
+    language = "ach"
+    model, tokenizer, processor, feature_extractor = setup_model(model_id, language)
+    decoder = setup_decoder(language, tokenizer, feature_extractor)
+    pipe = setup_pipeline(model, tokenizer, feature_extractor, processor, decoder)
 
-    print("kenlm decoder type", asr_pipeline.type)
+    audio_files = [
+        "./content/MEGA 12.2.mp3",
+        # "./content/Lutino weng pwonye - Dul 1 - Introduction - Including Radio Maria.mp3",
+    ]
 
-    return asr_pipeline(
-        audio_samples,
-        chunk_length_s=chunk_length_s,
-        stride_length_s=stride_length_s,
-        return_timestamps=return_timestamps,
-    )
-
-
-def transcribe_without_kenlm(
-    audio_file,
-    asr_pipeline,
-    chunk_length_s=None,
-    stride_length_s=None,
-    return_timestamps=None,
-):
-    audio_samples = librosa.load(audio_file, sr=16000, mono=True)[0]
-
-    # print(asr_pipeline.type)
-    print("no lmhead decoder type", asr_pipeline.type)
-
-    return asr_pipeline(
-        audio_samples,
-        chunk_length_s=chunk_length_s,
-        stride_length_s=stride_length_s,
-        return_timestamps=return_timestamps,
-    )
+    for audio_file in audio_files:
+        if os.path.exists(audio_file):
+            transcription = transcribe_audio(pipe, audio_file)
+            print(f"Transcription for {os.path.basename(audio_file)}: {transcription}")
+        else:
+            print(f"File {audio_file} does not exist.")
