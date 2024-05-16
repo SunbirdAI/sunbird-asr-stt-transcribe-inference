@@ -33,7 +33,9 @@ def main(target_lang, audio_file):
     try:
         model, tokenizer, processor, feature_extractor = setup_model(model_id, language)
         decoder = setup_decoder(language, tokenizer, feature_extractor)
-        pipe = setup_pipeline(model, tokenizer, feature_extractor, processor, decoder)
+        pipe = setup_pipeline(
+            model, language, tokenizer, feature_extractor, processor, decoder
+        )
         transcription = transcribe_audio(pipe, audio_file)
         return transcription
     except Exception as e:

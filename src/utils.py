@@ -39,7 +39,10 @@ def setup_model(model_id: str, language: str):
     model = Wav2Vec2ForCTC.from_pretrained(model_id).to(device)
     tokenizer = Wav2Vec2CTCTokenizer.from_pretrained(model_id)
     tokenizer.set_target_lang(language)
-    model.load_adapter(f"{language}+eng")
+    if language == "eng":
+        model.load_adapter(language)
+    else:
+        model.load_adapter(f"{language}+eng")
     feature_extractor = Wav2Vec2FeatureExtractor(
         feature_size=1,
         sampling_rate=16000,
@@ -65,13 +68,14 @@ def setup_decoder(language: str, tokenizer, feature_extractor):
     Returns:
         decoder: CTC decoder.
     """
-    lm_file_name = f"{language}_3gram.bin"
-    lm_file_subfolder = "language_model"
-    lm_file = hf_hub_download(
-        repo_id=lang_config[language],
-        filename=lm_file_name,
-        subfolder=lm_file_subfolder,
-    )
+    if language in ["ach", "lug"]:
+        lm_file_name = f"{language}_eng_3gram.bin"
+        lm_file_subfolder = "language_model"
+        lm_file = hf_hub_download(
+            repo_id=lang_config[language],
+            filename=lm_file_name,
+            subfolder=lm_file_subfolder,
+        )
     processor = Wav2Vec2Processor(
         feature_extractor=feature_extractor, tokenizer=tokenizer
     )
@@ -79,18 +83,22 @@ def setup_decoder(language: str, tokenizer, feature_extractor):
     sorted_vocab_dict = {
         k.lower(): v for k, v in sorted(vocab_dict.items(), key=lambda item: item[1])
     }
-    decoder = build_ctcdecoder(
-        labels=list(sorted_vocab_dict.keys()), kenlm_model_path=lm_file
-    )
+    if language in ["ach", "lug"]:
+        decoder = build_ctcdecoder(
+            labels=list(sorted_vocab_dict.keys()), kenlm_model_path=lm_file
+        )
+    else:
+        decoder = build_ctcdecoder(labels=list(sorted_vocab_dict.keys()))
     return decoder
 
 
-def setup_pipeline(model, tokenizer, feature_extractor, processor, decoder):
+def setup_pipeline(model, language, tokenizer, feature_extractor, processor, decoder):
     """
     Setup ASR pipeline.
 
     Args:
         model: Loaded Wav2Vec2 model.
+        language (str): Language code.
         tokenizer: Model tokenizer.
         feature_extractor: Feature extractor for the model.
         processor: Processor for the model.
@@ -99,21 +107,33 @@ def setup_pipeline(model, tokenizer, feature_extractor, processor, decoder):
     Returns:
         pipe: ASR pipeline.
     """
-    processor_with_lm = Wav2Vec2ProcessorWithLM(
-        feature_extractor=feature_extractor,
-        tokenizer=tokenizer,
-        decoder=decoder,
-    )
-    feature_extractor._set_processor_class("Wav2Vec2ProcessorWithLM")
-    pipe = AutomaticSpeechRecognitionPipeline(
-        model=model,
-        tokenizer=processor_with_lm.tokenizer,
-        feature_extractor=processor_with_lm.feature_extractor,
-        decoder=processor_with_lm.decoder,
-        device=device,
-        chunk_length_s=5,
-        stride_length_s=(1, 2),
-    )
+    if language in ["ach", "lug"]:
+        processor_with_lm = Wav2Vec2ProcessorWithLM(
+            feature_extractor=feature_extractor,
+            tokenizer=tokenizer,
+            decoder=decoder,
+        )
+        feature_extractor._set_processor_class("Wav2Vec2ProcessorWithLM")
+        pipe = AutomaticSpeechRecognitionPipeline(
+            model=model,
+            tokenizer=processor_with_lm.tokenizer,
+            feature_extractor=processor_with_lm.feature_extractor,
+            decoder=processor_with_lm.decoder,
+            device=device,
+            chunk_length_s=5,
+            stride_length_s=(1, 2),
+        )
+    else:
+        pipe = AutomaticSpeechRecognitionPipeline(
+            model=model,
+            tokenizer=processor.tokenizer,
+            feature_extractor=processor.feature_extractor,
+            decoder=decoder,
+            device=device,
+            chunk_length_s=5,
+            stride_length_s=(1, 2),
+        )
+
     return pipe
 
 
