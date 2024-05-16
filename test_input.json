@@ -1,7 +1,7 @@
 {
     "input": {
-        "target_lang": "lug",
-        "adapter": "lug",
-        "audio_file": "./content/SIMBA 10.1.mp3"
+        "target_lang": "ach",
+        "adapter": "ach",
+        "audio_file": "./content/Acholi 0.mp3"
     }
 }
